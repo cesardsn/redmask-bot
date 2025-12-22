@@ -1,101 +1,157 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
-
+from database_duel import (
+    create_duel_tables,
+    create_duel,
+    list_open_duels,
+    get_user_active_duel,
+)
 from database import get_characters
-from database_duel import create_duel, get_open_duels, accept_duel
 
-
+# ==============================
+# MENU PRINCIPAL DE DUELOS
+# ==============================
 async def duel_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("➕ Criar Duelo", callback_data="duel_create")],
+        [InlineKeyboardButton("📜 Ver Duelos Abertos", callback_data="duel_list")],
+        [InlineKeyboardButton("⬅️ Voltar", callback_data="back_main")]
+    ]
+
     await update.callback_query.edit_message_text(
-        "⚔️ *Sistema de Duelo*\n\n"
-        "• Taxa: 25 TC por jogador\n"
-        "• Sem premiação\n"
-        "• Apenas mesmo servidor\n\n"
+        "🤺 *Sistema de Duelos*\n\n"
+        "• Crie duelos por nível\n"
+        "• Apenas jogadores do mesmo servidor\n"
+        "• Sem premiação (apenas taxa futuramente)\n\n"
         "Escolha uma opção:",
-        parse_mode="Markdown",
-        reply_markup=None
-    )
-
-
-async def duel_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["duel_step"] = "MIN_LEVEL"
-    await update.callback_query.edit_message_text(
-        "Informe o *nível mínimo* do desafio:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
 
 
-async def duel_receive_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    step = context.user_data.get("duel_step")
-    if not step:
-        return
+# ==============================
+# INICIAR CRIAÇÃO DE DUELO
+# ==============================
+async def duel_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = update.callback_query.from_user.id
 
-    try:
-        value = int(update.message.text.strip())
-    except:
-        await update.message.reply_text("Digite apenas números.")
-        return
-
-    if step == "MIN_LEVEL":
-        context.user_data["min_level"] = value
-        context.user_data["duel_step"] = "MAX_LEVEL"
-        await update.message.reply_text("Informe o *nível máximo*:")
-        return
-
-    if step == "MAX_LEVEL":
-        context.user_data["max_level"] = value
-
-        chars = get_characters(update.effective_user.id)
-        if not chars:
-            await update.message.reply_text("Você não tem personagem cadastrado.")
-            return
-
-        # Primeiro personagem como padrão
-        challenger = chars[0]
-
-        # World será resolvido depois (já está no banco)
-        create_duel(
-            challenger=challenger,
-            world=None,
-            min_lvl=context.user_data["min_level"],
-            max_lvl=context.user_data["max_level"]
+    # verifica se já existe duelo ativo
+    active = get_user_active_duel(telegram_id)
+    if active:
+        await update.callback_query.edit_message_text(
+            "❌ Você já possui um duelo ativo.\n"
+            "Finalize ou cancele antes de criar outro."
         )
+        return
 
-        await update.message.reply_text(
-            "✅ Duelo criado!\n\n"
-            "Jogadores elegíveis receberão notificação."
-        )
+    chars = get_characters(telegram_id)
 
-        context.user_data.clear()
-
-
-async def duel_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chars = get_characters(update.effective_user.id)
     if not chars:
-        await update.callback_query.edit_message_text("Sem personagem cadastrado.")
+        await update.callback_query.edit_message_text(
+            "⚠️ Você precisa cadastrar ao menos um personagem primeiro."
+        )
         return
 
-    # Usaremos o primeiro char
-    char = chars[0]
-
-    duels = get_open_duels(world=None, level=0)
-
-    if not duels:
-        await update.callback_query.edit_message_text("Nenhum duelo disponível.")
-        return
-
-    buttons = []
-    for d in duels:
-        duel_id, challenger, min_lvl, max_lvl = d
-        buttons.append([
-            InlineKeyboardButton(
-                f"⚔️ {challenger} ({min_lvl}-{max_lvl})",
-                callback_data=f"duel_accept_{duel_id}"
-            )
-        ])
+    # salva estado
+    context.user_data["duel_step"] = "min_level"
 
     await update.callback_query.edit_message_text(
-        "📥 *Duelos disponíveis:*",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(buttons)
+        "🔢 Informe o *NÍVEL MÍNIMO* do duelo:",
+        parse_mode="Markdown"
     )
+
+
+# ==============================
+# LISTAR DUELOS ABERTOS
+# ==============================
+async def duel_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = update.callback_query.from_user.id
+    chars = get_characters(telegram_id)
+
+    if not chars:
+        await update.callback_query.edit_message_text(
+            "⚠️ Cadastre um personagem primeiro."
+        )
+        return
+
+    duels = list_open_duels(chars)
+
+    if not duels:
+        await update.callback_query.edit_message_text(
+            "📭 Nenhum duelo disponível no seu servidor no momento."
+        )
+        return
+
+    text = "📜 *Duelos Abertos*\n\n"
+    for d in duels:
+        text += (
+            f"👤 Criador: {d['creator_char']}\n"
+            f"🌍 Servidor: {d['world']}\n"
+            f"🎯 Nível: {d['min_level']} - {d['max_level']}\n"
+            f"🕒 Criado em: {d['created_at']}\n\n"
+        )
+
+    await update.callback_query.edit_message_text(
+        text,
+        parse_mode="Markdown"
+    )
+
+
+# ==============================
+# RECEBER INPUTS (NÍVEIS)
+# ==============================
+async def duel_receive_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if "duel_step" not in context.user_data:
+        return
+
+    text = update.message.text.strip()
+
+    if not text.isdigit():
+        await update.message.reply_text("❌ Digite apenas números.")
+        return
+
+    value = int(text)
+
+    # PASSO 1 — nível mínimo
+    if context.user_data["duel_step"] == "min_level":
+        context.user_data["duel_min"] = value
+        context.user_data["duel_step"] = "max_level"
+
+        await update.message.reply_text(
+            "🔢 Agora informe o *NÍVEL MÁXIMO* do duelo:",
+            parse_mode="Markdown"
+        )
+        return
+
+    # PASSO 2 — nível máximo
+    if context.user_data["duel_step"] == "max_level":
+        min_level = context.user_data["duel_min"]
+
+        if value < min_level:
+            await update.message.reply_text(
+                "❌ O nível máximo não pode ser menor que o mínimo."
+            )
+            return
+
+        telegram_id = update.message.from_user.id
+        chars = get_characters(telegram_id)
+
+        # usa o primeiro personagem como padrão
+        creator_char = chars[0]
+
+        create_duel(
+            telegram_id=telegram_id,
+            creator_char=creator_char["name"],
+            world=creator_char["world"],
+            min_level=min_level,
+            max_level=value
+        )
+
+        # limpa estado
+        context.user_data.clear()
+
+        await update.message.reply_text(
+            "✅ *Duelo criado com sucesso!*\n\n"
+            "Jogadores compatíveis receberão notificação.",
+            parse_mode="Markdown"
+        )
