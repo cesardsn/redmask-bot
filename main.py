@@ -1,3 +1,5 @@
+from handlers.profile import show_profile, receive_char_name
+from telegram.ext import MessageHandler, filters
 from database import init_db
 from telegram import Update
 from telegram.ext import (
@@ -48,6 +50,7 @@ def main():
     app.add_handler(CallbackQueryHandler(button_router))
 
     print("RedMask Bot iniciado...")
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receive_char_name))
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
