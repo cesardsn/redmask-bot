@@ -11,12 +11,14 @@ from handlers.start import start
 import logging
 
 
+# LOGS (importante para Railway)
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 
 
+# Roteador de botões (menu)
 async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
