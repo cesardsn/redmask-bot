@@ -1,58 +1,126 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes, MessageHandler, filters
+from telegram.ext import ContextTypes
+from database import get_connection
+import requests
+from bs4 import BeautifulSoup
 
-from database import add_user, add_or_update_character, get_characters
-from scraper.character import get_character
+# =========================
+# TECLADO PROFILE
+# =========================
 
+def profile_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("➕ Vincular Char", callback_data="add_char")],
+        [InlineKeyboardButton("⬅️ Voltar", callback_data="menu")]
+    ])
+
+# =========================
+# MOSTRAR PERFIL
+# =========================
 
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    telegram_id = update.effective_user.id
-    username = update.effective_user.username
+    query = update.callback_query
+    await query.answer()
 
-    add_user(telegram_id, username)
+    conn = get_connection()
+    c = conn.cursor()
 
-    chars = get_characters(telegram_id)
-
-    text = "👤 *Meu Perfil*\n\n"
+    c.execute(
+        "SELECT char_name, server, level, vocation FROM characters WHERE telegram_id=?",
+        (query.from_user.id,)
+    )
+    chars = c.fetchall()
+    conn.close()
 
     if not chars:
-        text += "Você ainda não adicionou nenhum personagem.\n\n"
-        text += "✏️ Envie agora o *nome do personagem* para adicionar."
+        text = (
+            "👤 *Seu Perfil*\n\n"
+            "Nenhum personagem vinculado ainda.\n"
+            "Clique abaixo para adicionar."
+        )
     else:
-        text += "Seus personagens:\n"
-        for c in chars:
-            text += f"• `{c}`\n"
-        text += "\n✏️ Envie o nome de um novo personagem para adicionar."
+        text = "👤 *Seus Personagens*\n\n"
+        for char in chars:
+            text += (
+                f"• *{char[0]}*\n"
+                f"  Servidor: {char[1]}\n"
+                f"  Level: {char[2]}\n"
+                f"  Vocação: {char[3]}\n\n"
+            )
 
-    await update.callback_query.edit_message_text(
-        text=text,
+    await query.edit_message_text(
+        text,
+        reply_markup=profile_keyboard(),
         parse_mode="Markdown"
     )
 
-    context.user_data["awaiting_char_name"] = True
-
+# =========================
+# RECEBER NOME DO CHAR
+# =========================
 
 async def receive_char_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.user_data.get("awaiting_char_name"):
-        return
-
     char_name = update.message.text.strip()
-    telegram_id = update.effective_user.id
+    telegram_id = update.message.from_user.id
 
-    char = get_character(char_name)
+    await update.message.reply_text("🔍 Buscando informações do personagem...")
 
-    if not char:
-        await update.message.reply_text("❌ Personagem não encontrado no Tibia.")
+    url = f"https://www.tibia.com/community/?name={char_name.replace(' ', '+')}"
+    response = requests.get(url, timeout=10)
+
+    if response.status_code != 200:
+        await update.message.reply_text("❌ Erro ao consultar o Tibia.")
         return
 
-    add_or_update_character(telegram_id, char)
+    soup = BeautifulSoup(response.text, "html.parser")
 
-    await update.message.reply_text(
-        f"✅ Personagem *{char['name']}* adicionado com sucesso!\n"
-        f"🌍 Mundo: {char['world']}\n"
-        f"⚔️ Level: {char['level']}\n"
-        f"🧙 Vocação: {char['voc']}",
-        parse_mode="Markdown"
+    if "Character does not exist" in soup.text:
+        await update.message.reply_text("❌ Personagem não encontrado.")
+        return
+
+    data = soup.find_all("td", class_="LabelV")
+    values = soup.find_all("td", class_="LabelV")  # fallback seguro
+
+    rows = soup.find_all("tr")
+
+    server = level = vocation = None
+
+    for row in rows:
+        cols = row.find_all("td")
+        if len(cols) != 2:
+            continue
+
+        label = cols[0].text.strip()
+        value = cols[1].text.strip()
+
+        if label == "World:":
+            server = value
+        elif label == "Level:":
+            level = int(value)
+        elif label == "Vocation:":
+            vocation = value
+
+    if not server or not level or not vocation:
+        await update.message.reply_text("❌ Não foi possível ler os dados do personagem.")
+        return
+
+    conn = get_connection()
+    c = conn.cursor()
+
+    c.execute(
+        """
+        INSERT INTO characters (telegram_id, char_name, server, level, vocation)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (telegram_id, char_name, server, level, vocation)
     )
 
-    context.user_data["awaiting_char_name"] = False
+    conn.commit()
+    conn.close()
+
+    await update.message.reply_text(
+        f"✅ Personagem *{char_name}* vinculado com sucesso!\n\n"
+        f"Servidor: {server}\n"
+        f"Level: {level}\n"
+        f"Vocação: {vocation}",
+        parse_mode="Markdown"
+    )
