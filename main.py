@@ -1,3 +1,4 @@
+from database import init_db
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -40,8 +41,9 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
+     init_db()  # cria o banco automaticamente
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_router))
 
