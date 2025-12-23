@@ -3,7 +3,7 @@ from telegram.ext import ContextTypes
 from database_duel import (
     create_duel_tables,
     create_duel,
-    list_open_duels,
+    get_open_duels,
     get_user_active_duel,
 )
 from database import get_characters
