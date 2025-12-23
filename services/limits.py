@@ -1,30 +1,30 @@
 from services.db import get_connection
-from datetime import date
-from config import DAILY_LIMIT
 
-def check_limit(telegram_id, feature):
-    today = date.today().isoformat()
+def register_user(telegram_id, char_name):
     conn = get_connection()
     c = conn.cursor()
-    
-    # Verifica limite atual
-    c.execute("SELECT uses FROM limits WHERE telegram_id = ? AND feature = ? AND date = ?", (telegram_id, feature, today))
-    row = c.fetchone()
-    
-    # Verifica se é premium
-    c.execute("SELECT premium FROM users WHERE telegram_id = ?", (telegram_id,))
-    user = c.fetchone()
-    is_premium = user["premium"] if user else 0
-    
-    if not is_premium:
-        if row and row["uses"] >= DAILY_LIMIT:
-            conn.close()
-            return False
-        elif row:
-            c.execute("UPDATE limits SET uses = uses + 1 WHERE telegram_id = ? AND feature = ? AND date = ?", (telegram_id, feature, today))
-        else:
-            c.execute("INSERT INTO limits (telegram_id, feature, uses, date) VALUES (?, ?, 1, ?)", (telegram_id, feature, today))
-        conn.commit()
-    
+    c.execute("INSERT OR IGNORE INTO users (telegram_id, char_name) VALUES (?, ?)", (telegram_id, char_name))
+    conn.commit()
     conn.close()
-    return True
+
+def get_user(telegram_id):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+    row = c.fetchone()
+    conn.close()
+    return row
+
+def set_premium(telegram_id):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("UPDATE users SET premium = 1 WHERE telegram_id = ?", (telegram_id,))
+    conn.commit()
+    conn.close()
+
+def change_char(telegram_id, new_char):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("UPDATE users SET char_name = ? WHERE telegram_id = ?", (new_char, telegram_id))
+    conn.commit()
+    conn.close()
