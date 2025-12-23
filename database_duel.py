@@ -1,212 +1,129 @@
 import sqlite3
+from datetime import datetime
 
-DB_NAME = "redmask.db"
+DB_NAME = "database.db"
 
 
+# ==============================
+# CONEXÃO
+# ==============================
 def get_connection():
-    return sqlite3.connect(
-        DB_NAME,
-        check_same_thread=False,
-        timeout=30
-    )
+    return sqlite3.connect(DB_NAME)
 
 
-# ===============================
-# INICIALIZAÇÃO DAS TABELAS
-# ===============================
+# ==============================
+# CRIAR TABELA DE DUELOS
+# ==============================
 def create_duel_tables():
     conn = get_connection()
-    cur = conn.cursor()
+    cursor = conn.cursor()
 
-    # Duelos
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS duels (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        creator_telegram_id INTEGER,
-        creator_char TEXT,
-        world TEXT,
-        min_level INTEGER,
-        max_level INTEGER,
-        status TEXT DEFAULT 'open', -- open, accepted, finished, cancelled
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    # Participantes do duelo
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS duel_participants (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        duel_id INTEGER,
-        telegram_id INTEGER,
-        char_name TEXT,
-        accepted INTEGER DEFAULT 0,
-        FOREIGN KEY (duel_id) REFERENCES duels (id)
-    )
-    """)
-
-    # Histórico (log)
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS duel_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        duel_id INTEGER,
-        message TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS duels (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            creator_telegram_id INTEGER NOT NULL,
+            creator_char TEXT NOT NULL,
+            world TEXT NOT NULL,
+            min_level INTEGER NOT NULL,
+            max_level INTEGER NOT NULL,
+            status TEXT DEFAULT 'open',
+            created_at TEXT NOT NULL
+        )
     """)
 
     conn.commit()
     conn.close()
 
 
-# ===============================
+# ==============================
 # CRIAR DUELO
-# ===============================
-def create_duel(telegram_id, char_name, world, min_level, max_level):
+# ==============================
+def create_duel(
+    telegram_id: int,
+    creator_char: str,
+    world: str,
+    min_level: int,
+    max_level: int
+):
     conn = get_connection()
-    cur = conn.cursor()
+    cursor = conn.cursor()
 
-    cur.execute("""
-    INSERT INTO duels
-    (creator_telegram_id, creator_char, world, min_level, max_level)
-    VALUES (?, ?, ?, ?, ?)
+    cursor.execute("""
+        INSERT INTO duels (
+            creator_telegram_id,
+            creator_char,
+            world,
+            min_level,
+            max_level,
+            status,
+            created_at
+        ) VALUES (?, ?, ?, ?, ?, 'open', ?)
     """, (
         telegram_id,
-        char_name,
+        creator_char,
         world,
         min_level,
-        max_level
+        max_level,
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ))
 
-    duel_id = cur.lastrowid
-
-    # Criador entra automaticamente como participante
-    cur.execute("""
-    INSERT INTO duel_participants
-    (duel_id, telegram_id, char_name, accepted)
-    VALUES (?, ?, ?, 1)
-    """, (duel_id, telegram_id, char_name))
-
     conn.commit()
     conn.close()
 
-    return duel_id
 
-
-# ===============================
-# LISTAR DUELOS ABERTOS (POR WORLD)
-# ===============================
-def get_open_duels(world):
+# ==============================
+# VERIFICAR DUELO ATIVO DO USUÁRIO
+# (ESSA FUNÇÃO ESTAVA FALTANDO ❌)
+# ==============================
+def get_user_active_duel(telegram_id: int):
     conn = get_connection()
-    cur = conn.cursor()
+    cursor = conn.cursor()
 
-    cur.execute("""
-    SELECT id, creator_char, min_level, max_level, created_at
-    FROM duels
-    WHERE status = 'open' AND world = ?
-    ORDER BY created_at DESC
-    """, (world,))
+    cursor.execute("""
+        SELECT id FROM duels
+        WHERE creator_telegram_id = ?
+        AND status = 'open'
+        LIMIT 1
+    """, (telegram_id,))
 
-    duels = cur.fetchall()
+    duel = cursor.fetchone()
     conn.close()
+
+    return duel
+
+
+# ==============================
+# LISTAR DUELOS ABERTOS
+# ==============================
+def get_open_duels(user_chars: list):
+    if not user_chars:
+        return []
+
+    worlds = list(set(char["world"] for char in user_chars))
+    placeholders = ",".join("?" * len(worlds))
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(f"""
+        SELECT creator_char, world, min_level, max_level, created_at
+        FROM duels
+        WHERE status = 'open'
+        AND world IN ({placeholders})
+        ORDER BY created_at DESC
+    """, worlds)
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    duels = []
+    for row in rows:
+        duels.append({
+            "creator_char": row[0],
+            "world": row[1],
+            "min_level": row[2],
+            "max_level": row[3],
+            "created_at": row[4],
+        })
+
     return duels
-
-
-# ===============================
-# ENTRAR EM UM DUELO
-# ===============================
-def join_duel(duel_id, telegram_id, char_name):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    # Evita duplicação
-    cur.execute("""
-    SELECT id FROM duel_participants
-    WHERE duel_id = ? AND telegram_id = ?
-    """, (duel_id, telegram_id))
-
-    if cur.fetchone():
-        conn.close()
-        return False
-
-    cur.execute("""
-    INSERT INTO duel_participants
-    (duel_id, telegram_id, char_name)
-    VALUES (?, ?, ?)
-    """, (duel_id, telegram_id, char_name))
-
-    conn.commit()
-    conn.close()
-    return True
-
-
-# ===============================
-# ACEITAR DUELO
-# ===============================
-def accept_duel(duel_id, telegram_id):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-    UPDATE duel_participants
-    SET accepted = 1
-    WHERE duel_id = ? AND telegram_id = ?
-    """, (duel_id, telegram_id))
-
-    # Marca duelo como ativo
-    cur.execute("""
-    UPDATE duels
-    SET status = 'accepted'
-    WHERE id = ?
-    """, (duel_id,))
-
-    conn.commit()
-    conn.close()
-
-
-# ===============================
-# FINALIZAR DUELO
-# ===============================
-def finish_duel(duel_id):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-    UPDATE duels
-    SET status = 'finished'
-    WHERE id = ?
-    """, (duel_id,))
-
-    conn.commit()
-    conn.close()
-
-
-# ===============================
-# LOGS DO DUELO
-# ===============================
-def add_duel_log(duel_id, message):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-    INSERT INTO duel_logs (duel_id, message)
-    VALUES (?, ?)
-    """, (duel_id, message))
-
-    conn.commit()
-    conn.close()
-
-
-def get_duel_logs(duel_id):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT message, created_at
-    FROM duel_logs
-    WHERE duel_id = ?
-    ORDER BY created_at ASC
-    """, (duel_id,))
-
-    logs = cur.fetchall()
-    conn.close()
-    return logs
