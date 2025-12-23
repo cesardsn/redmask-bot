@@ -34,29 +34,46 @@ logging.basicConfig(
 # ======================
 # ROUTER DE BOTÕES
 # ======================
+# ======================
+# ROUTER DE BOTÕES
+# ======================
 async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     data = query.data
 
+    # MENU PRINCIPAL
     if data == "profile":
         await show_profile(update, context)
 
     elif data == "duel":
         await duel_menu_handler(update, context)
 
+    elif data == "guild":
+        await query.edit_message_text("🏰 Sistema de Guild / Claimed (em construção)")
+
+    elif data == "war":
+        await query.edit_message_text("⚔️ Guild War (em construção)")
+
+    elif data == "bounty":
+        await query.edit_message_text("🎯 Sistema de Pistoleiros (em construção)")
+
+    elif data == "premium":
+        await query.edit_message_text("⭐ Premium & Vantagens (em construção)")
+
+    # ===== DUELOS =====
     elif data == "duel_create":
         await duel_create(update, context)
 
     elif data == "duel_list":
         await duel_list(update, context)
 
+    # ===== VOLTAR =====
     elif data == "back_main":
         await start(update, context)
 
     else:
-        await query.edit_message_text("⚠️ Opção inválida.")
+        await query.edit_message_text("❌ Opção inválida.")
 
 
 # ======================
