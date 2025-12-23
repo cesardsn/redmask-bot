@@ -1,23 +1,30 @@
 from services.db import get_connection
-from datetime import datetime
 
-def create_payment(telegram_id, char_name, value):
+def register_user(telegram_id, char_name):
     conn = get_connection()
     c = conn.cursor()
-    c.execute("INSERT INTO payments (telegram_id, char_name, value, date) VALUES (?, ?, ?, ?)",
-              (telegram_id, char_name, value, datetime.now().isoformat()))
+    c.execute("INSERT OR IGNORE INTO users (telegram_id, char_name) VALUES (?, ?)", (telegram_id, char_name))
     conn.commit()
     conn.close()
 
-def confirm_payment(payment_id):
+def get_user(telegram_id):
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT telegram_id, char_name, value FROM payments WHERE id = ?", (payment_id,))
+    c.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
     row = c.fetchone()
-    if row:
-        # confirma pagamento
-        c.execute("UPDATE payments SET confirmed = 1 WHERE id = ?", (payment_id,))
-        # seta premium
-        c.execute("UPDATE users SET premium = 1 WHERE telegram_id = ?", (row["telegram_id"],))
+    conn.close()
+    return row
+
+def set_premium(telegram_id):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("UPDATE users SET premium = 1 WHERE telegram_id = ?", (telegram_id,))
+    conn.commit()
+    conn.close()
+
+def change_char(telegram_id, new_char):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("UPDATE users SET char_name = ? WHERE telegram_id = ?", (new_char, telegram_id))
     conn.commit()
     conn.close()
