@@ -62,31 +62,54 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "premium":
         await query.edit_message_text("⭐ Premium & Vantagens (em construção)")
 
+    elif data == "back_main":
+        await start(update, context)
+
+
 # ======================
 # MAIN
 # ======================
 def main():
-    # banco principal
+    # inicializa banco principal
     init_db()
 
-    # tabelas específicas de duelo
+    # inicializa tabelas de duelo
     create_duel_tables()
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    # comandos
+    # ======================
+    # COMANDOS
+    # ======================
     app.add_handler(CommandHandler("start", start))
 
-    # botões
+    # ======================
+    # BOTÕES (INLINE)
+    # ======================
     app.add_handler(CallbackQueryHandler(button_router))
 
-    # textos (ex: nome do char)
+    # ======================
+    # INPUTS DE TEXTO
+    # - nome de personagem
+    # - níveis de duelo
+    # ======================
     app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, receive_char_name)
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            duel_receive_input
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            receive_char_name
+        )
     )
 
     print("🔥 RedMask Bot iniciado com sucesso")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
+
 
 # ======================
 # ENTRYPOINT
