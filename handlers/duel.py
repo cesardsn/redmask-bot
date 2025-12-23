@@ -74,7 +74,7 @@ async def duel_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    duels = list_open_duels(chars)
+    duels = get_open_duels(chars)
 
     if not duels:
         await update.callback_query.edit_message_text(
