@@ -1,30 +1,42 @@
 from services.db import get_connection
+from datetime import date
+from config import DAILY_LIMIT
 
-def register_user(telegram_id, char_name):
+def check_limit(telegram_id, feature):
+    """
+    Verifica se o usuário atingiu o limite diário de uso de uma função.
+    Retorna True se pode usar, False se já atingiu o limite (para Free).
+    Usuários Premium não têm limite.
+    """
+    today = date.today().isoformat()
     conn = get_connection()
     c = conn.cursor()
-    c.execute("INSERT OR IGNORE INTO users (telegram_id, char_name) VALUES (?, ?)", (telegram_id, char_name))
-    conn.commit()
-    conn.close()
+    
+    # Verifica se é Premium
+    c.execute("SELECT premium FROM users WHERE telegram_id = ?", (telegram_id,))
+    user = c.fetchone()
+    is_premium = user["premium"] if user else 0
 
-def get_user(telegram_id):
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+    if is_premium:
+        conn.close()
+        return True
+
+    # Verifica limite diário
+    c.execute("SELECT uses FROM limits WHERE telegram_id = ? AND feature = ? AND date = ?",
+              (telegram_id, feature, today))
     row = c.fetchone()
-    conn.close()
-    return row
 
-def set_premium(telegram_id):
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("UPDATE users SET premium = 1 WHERE telegram_id = ?", (telegram_id,))
+    if row:
+        if row["uses"] >= DAILY_LIMIT:
+            conn.close()
+            return False
+        else:
+            c.execute("UPDATE limits SET uses = uses + 1 WHERE telegram_id = ? AND feature = ? AND date = ?",
+                      (telegram_id, feature, today))
+    else:
+        c.execute("INSERT INTO limits (telegram_id, feature, uses, date) VALUES (?, ?, ?, ?)",
+                  (telegram_id, feature, 1, today))
+    
     conn.commit()
     conn.close()
-
-def change_char(telegram_id, new_char):
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("UPDATE users SET char_name = ? WHERE telegram_id = ?", (new_char, telegram_id))
-    conn.commit()
-    conn.close()
+    return True
