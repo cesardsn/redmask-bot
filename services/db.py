@@ -1,11 +1,47 @@
-import os
+import sqlite3
+from config import DB_FILE
 
-# Criar pasta de dados caso não exista
-DB_FOLDER = "./data"
-os.makedirs(DB_FOLDER, exist_ok=True)
+def get_connection():
+    # Conexão com sqlite
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-# Caminho do banco de dados
-DB_FILE = os.path.join(DB_FOLDER, "redmask_tibia.db")
+def init_db():
+    conn = get_connection()
+    c = conn.cursor()
+    
+    # Usuários
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        telegram_id INTEGER PRIMARY KEY,
+        char_name TEXT,
+        premium INTEGER DEFAULT 0
+    )
+    """)
+    
+    # Limites diários
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS limits (
+        telegram_id INTEGER,
+        feature TEXT,
+        uses INTEGER DEFAULT 0,
+        date TEXT,
+        PRIMARY KEY (telegram_id, feature, date)
+    )
+    """)
 
-# Limite diário de uso para Free users
-DAILY_LIMIT = 1
+    # Pagamentos
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        telegram_id INTEGER,
+        char_name TEXT,
+        value INTEGER,
+        confirmed INTEGER DEFAULT 0,
+        date TEXT
+    )
+    """)
+
+    conn.commit()
+    conn.close()
