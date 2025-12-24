@@ -29,8 +29,8 @@ if not TOKEN or ":" not in TOKEN:
 # =====================================================
 app = ApplicationBuilder().token(TOKEN).build()
 
-# registra menus e handlers
-app.include_router(menu_router)
+# 👉 REGISTRA OS HANDLERS CORRETAMENTE
+menu_router(app)
 
 print("✅ Bot inicializado com sucesso")
 print("🚀 Iniciando polling...")
