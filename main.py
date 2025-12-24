@@ -1,23 +1,35 @@
 # main.py
 import os
+import sys
 from telegram.ext import ApplicationBuilder
 from bot.menu import menu_router
 
-TOKEN = os.environ.get("BOT_TOKEN")  # variável de ambiente do token
-PORT = int(os.environ.get("PORT", 8443))
+print("🤖 Iniciando RedMask Tibia...")
 
-# Crie a aplicação do bot
+# =====================================================
+# TOKEN
+# =====================================================
+TOKEN = os.getenv("BOT_TOKEN")
+
+if not TOKEN or ":" not in TOKEN:
+    print("❌ ERRO CRÍTICO: BOT_TOKEN não encontrado ou inválido")
+    print("👉 Configure a variável de ambiente BOT_TOKEN no Railway")
+    sys.exit(1)
+
+# =====================================================
+# APP
+# =====================================================
 app = ApplicationBuilder().token(TOKEN).build()
 
-# Inclua todos os handlers/menu
+# registra todos os handlers/menus
 app.include_router(menu_router)
 
-# URL do webhook (substitua pelo domínio ou URL do Railway)
-WEBHOOK_URL = f"https://{os.environ.get('RAILWAY_STATIC_URL')}/{TOKEN}"
+# =====================================================
+# START
+# =====================================================
+print("✅ Bot inicializado com sucesso")
+print("🚀 Iniciando polling...")
 
-# Inicialização via webhook
-app.run_webhook(
-    listen="0.0.0.0",
-    port=PORT,
-    webhook_url=WEBHOOK_URL
+app.run_polling(
+    allowed_updates=["message", "callback_query"]
 )
