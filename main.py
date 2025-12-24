@@ -7,13 +7,21 @@ from bot.menu import menu_router
 print("🤖 Iniciando RedMask Tibia...")
 
 # =====================================================
-# TOKEN
+# TOKEN (env > config.py)
 # =====================================================
 TOKEN = os.getenv("BOT_TOKEN")
 
+if not TOKEN:
+    try:
+        from config import BOT_TOKEN as CONFIG_TOKEN
+        TOKEN = CONFIG_TOKEN
+        print("⚠️ BOT_TOKEN carregado do config.py")
+    except Exception:
+        TOKEN = None
+
 if not TOKEN or ":" not in TOKEN:
-    print("❌ ERRO CRÍTICO: BOT_TOKEN não encontrado ou inválido")
-    print("👉 Configure a variável de ambiente BOT_TOKEN no Railway")
+    print("❌ ERRO CRÍTICO: BOT_TOKEN não encontrado")
+    print("👉 Defina BOT_TOKEN no Railway OU em config.py")
     sys.exit(1)
 
 # =====================================================
@@ -21,12 +29,9 @@ if not TOKEN or ":" not in TOKEN:
 # =====================================================
 app = ApplicationBuilder().token(TOKEN).build()
 
-# registra todos os handlers/menus
+# registra menus e handlers
 app.include_router(menu_router)
 
-# =====================================================
-# START
-# =====================================================
 print("✅ Bot inicializado com sucesso")
 print("🚀 Iniciando polling...")
 
