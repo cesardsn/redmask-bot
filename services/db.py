@@ -1,18 +1,56 @@
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters
-from config import BOT_TOKEN
-from handlers.start import start, text_handler
-from bot.menu import menu_router
-from services.db import init_db
+import sqlite3
+from config import DB_FILE
 
-# Inicializa banco
-init_db()
+def get_connection():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-app = ApplicationBuilder().token(BOT_TOKEN).build()
+def init_db():
+    conn = get_connection()
+    c = conn.cursor()
+    
+    # Usuários
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        telegram_id INTEGER PRIMARY KEY,
+        char_name TEXT,
+        premium INTEGER DEFAULT 0
+    )
+    """)
+    
+    # Limites diários
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS limits (
+        telegram_id INTEGER,
+        feature TEXT,
+        uses INTEGER DEFAULT 0,
+        date TEXT,
+        PRIMARY KEY (telegram_id, feature, date)
+    )
+    """)
 
-# Comandos e handlers
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CallbackQueryHandler(menu_router))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+    # Pagamentos
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        telegram_id INTEGER,
+        char_name TEXT,
+        value INTEGER,
+        confirmed INTEGER DEFAULT 0,
+        date TEXT
+    )
+    """)
 
-print("🤖 RedMask Tibia iniciado")
-app.run_polling()
+    # Patrocinadores
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS sponsors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        char_name TEXT,
+        value INTEGER,
+        date TEXT
+    )
+    """)
+    
+    conn.commit()
+    conn.close()
